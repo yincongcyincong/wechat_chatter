@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -19,6 +18,7 @@ import (
 
 func main() {
 	initFlag()
+	initLogger()
 	if config.FridaType == "gadget" {
 		initFridaGadget()
 	} else {
@@ -37,13 +37,13 @@ func main() {
 	
 	go func() {
 		<-stop
-		log.Fatalf("\n正在释放 Frida 资源并退出...")
+		Fatal("正在释放 Frida 资源并退出...")
 	}()
 	
 	// 3. 启动服务
-	fmt.Printf("HTTP 服务启动在 %s\n", config.ReceiveHost)
+	Info("HTTP 服务启动在", "host", config.ReceiveHost)
 	if err := http.ListenAndServe(config.ReceiveHost, nil); err != nil {
-		log.Printf("服务启动失败: %v\n", err)
+		Error("服务启动失败", "err", err)
 	}
 	
 }
@@ -59,6 +59,7 @@ func initFlag() {
 	flag.StringVar(&config.WechatConf, "wechat_conf", "../wechat_version/4_1_7_55_mac.json", "微信配置文件路径: ../wechat_version/4_1_6_12_mac.json")
 	flag.StringVar(&config.ConnType, "conn_type", "http", "连接类型: http | websocket")
 	flag.IntVar(&config.SendInterval, "send_interval", 1000, "发送间隔: ms")
+	flag.StringVar(&logLevel, "log_level", "info", "log level")
 	
 	flag.Parse()
 	
@@ -70,14 +71,17 @@ func initFlag() {
 	fmt.Println("OnebotToken", config.OnebotToken)
 	fmt.Println("ImagePath", config.ImagePath)
 	fmt.Println("WechatConf", config.WechatConf)
+	fmt.Println("ConnType", config.ConnType)
+	fmt.Println("SendInterval", config.SendInterval)
+	fmt.Println("logLevel", logLevel)
 	
 	err := EnsureDir("./audio")
 	if err != nil {
-		log.Fatalf("❌ 无法创建音频目录: %v\n", err)
+		Fatal("❌ 无法创建音频目录", err)
 	}
 	err = EnsureDir("./image")
 	if err != nil {
-		log.Fatalf("❌ 无法创建图片目录: %v\n", err)
+		Fatal("❌ 无法创建图片目录", err)
 	}
 }
 
@@ -86,12 +90,12 @@ func initFridaGadget() {
 	// 连接到 Gadget 默认端口
 	device, err := mgr.AddRemoteDevice(config.FridaGadgetAddr, frida.NewRemoteDeviceOptions())
 	if err != nil {
-		log.Fatalf("❌ 无法连接 Gadget: %v\n", err)
+		Fatal("❌ 无法连接 Gadget", err)
 	}
 	
 	session, err = device.Attach("Gadget", nil)
 	if err != nil {
-		log.Fatalf("❌ 附加失败: %v\n", err)
+		Fatal("❌ 附加失败", err)
 	}
 	
 	loadJs()
@@ -105,13 +109,12 @@ func initFrida() {
 	// 2. 枚举并获取本地设备 (TypeLocal)
 	device, err := mgr.DeviceByType(frida.DeviceTypeLocal)
 	if err != nil {
-		log.Fatalf("无法获取本地设备: %v", err)
+		Fatal("无法获取本地设备", "err", err)
 	}
 	
-	fmt.Printf("正在尝试 Attach 到微信...")
 	session, err = device.Attach(config.WechatPid, nil)
 	if err != nil {
-		log.Fatalf("Attach 失败 (请检查 SIP 状态或权限): %v", err)
+		Fatal("Attach 失败 (请检查 SIP 状态或权限)", "err", err)
 	}
 	
 	loadJs()
@@ -120,49 +123,49 @@ func initFrida() {
 func loadJs() {
 	jsonData, err := os.ReadFile(config.WechatConf)
 	if err != nil {
-		log.Fatalf("读取文件失败: %v\n", err)
+		Fatal("读取文件失败", "err", err)
 	}
 	
 	// 2. 将 JSON 解析为 Map
 	var wechatHookConf map[string]interface{}
-	if err := json.Unmarshal(jsonData, &wechatHookConf); err != nil {
-		log.Fatalf("解析 JSON 失败: %v\n", err)
+	if err = json.Unmarshal(jsonData, &wechatHookConf); err != nil {
+		Fatal("解析 JSON 失败", "err", err)
 	}
 	
 	codeTemplate, err := os.ReadFile("./script.js")
 	if err != nil {
-		log.Fatalf("读取脚本失败: %v\n", err)
+		Fatal("读取脚本失败", "err", err)
 	}
 	
 	tmpl, err := template.New("fridaScript").Parse(string(codeTemplate))
 	if err != nil {
-		fmt.Printf("解析模板失败: %v\n", err)
+		Fatal("解析模板失败", "err", err)
 		return
 	}
 	
 	var buf bytes.Buffer
 	err = tmpl.Execute(&buf, wechatHookConf)
 	if err != nil {
-		log.Fatalf("执行模板失败: %v\n", err)
+		Fatal("执行模板失败", "err", err)
 	}
 	
 	script, err := session.CreateScript(buf.String())
 	if err != nil {
-		log.Fatalf("❌ 创建脚本失败: %v\n", err)
+		Fatal("创建脚本失败", "err", err)
 	}
 	
 	// 打印 JS 里的 console.log
 	script.On("message", func(rawMsg string) {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("panic: %v, %v\n", r, string(debug.Stack()))
+				Error("message panic", "err", r, "stack", string(debug.Stack()))
 			}
 		}()
 		
 		var msg map[string]interface{}
 		err = json.Unmarshal([]byte(rawMsg), &msg)
 		if err != nil {
-			log.Printf("JSON解析失败: %v\n", err)
+			Error("JSON解析失败", "err", err)
 			return
 		}
 		
@@ -185,7 +188,6 @@ func loadJs() {
 							finishChan <- struct{}{}
 						case "upload":
 							if selfId, ok := pMap["self_id"]; ok && myWechatId == "" {
-								fmt.Printf("✅ 检测到微信登录，当前账号: %s\n", selfId.(string))
 								myWechatId = selfId.(string)
 							}
 						case "upload_finish":
@@ -204,7 +206,7 @@ func loadJs() {
 						case "download":
 							err = Download(payloadJson)
 							if err != nil {
-								log.Printf("下载失败: %v\n", err)
+								Error("下载失败", "err", err)
 							}
 						}
 						
@@ -213,17 +215,17 @@ func loadJs() {
 			}
 		case "log":
 			// 这里处理 console.log
-			log.Printf("[JS日志] %s\n", msg["payload"])
+			Info("[JS日志]", "payload", msg["payload"])
 		case "error":
 			// 这里处理 JS 脚本报错
-			log.Printf("[❌脚本报错] %s\n", msg["description"])
+			Error("[JS日志报错]", "err", msg["description"])
 		}
 	})
 	
 	if err := script.Load(); err != nil {
-		log.Fatalf("❌ 加载脚本失败: %v\n", err)
+		Fatal("❌ 加载脚本失败", err)
 	}
 	
 	fridaScript = script
-	fmt.Printf("✅ Frida 已就绪，微信控制通道已打通")
+	Info("✅ Frida 已就绪，微信控制通道已打通")
 }

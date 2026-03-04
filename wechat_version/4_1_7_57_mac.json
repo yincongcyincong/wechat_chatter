@@ -1,0 +1,22 @@
+{
+  "protobufAddr": "0x245E9B0",
+  "patchTextProtobufAddr": "0x245E98C",
+  "PatchTextProtobufDeleteAddr": "0x245E9C8",
+  "sendMessageCallbackFunc": "0x8781010",
+  "sendFuncAddr": "0x47F1888",
+  "req2bufEnterAddr": "0x36F1614",
+  "req2bufExitAddr": "0x36F27EC",
+  "imgProtobufAddr": "0x2455574",
+  "patchImgProtobufFunc1": "0x2455530",
+  "patchImgProtobufFunc2": "0x2455550",
+  "imgProtobufDeleteAddr": "0x245558C",
+  "imgMessageCallbackFunc1": "0x8780AD8",
+  "uploadImageAddr": "0x4938E08",
+  "CndOnCompleteAddr": "0x36B03A0",
+  "buf2RespAddr": "0x37173B0",
+  "uploadGetCallbackWrapperAddr": "0x49068CC",
+  "uploadGetCallbackWrapperFuncAddr": "0x36AFBEC",
+  "uploadOnCompleteAddr": "0x4906EC8",
+  "uploadOnCompleteFuncAddr": "0x36B0DD0",
+  "downloadImagAddr": "0x49FB92C"
+}

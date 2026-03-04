@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"runtime/debug"
 	"strings"
@@ -18,18 +17,21 @@ import (
 func sendHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "仅支持 POST", http.StatusMethodNotAllowed)
+		Error("仅支持 POST")
 		return
 	}
 	
 	req := new(SendRequest)
 	if err := json.NewDecoder(r.Body).Decode(req); err != nil {
 		http.Error(w, "无效的 JSON", http.StatusBadRequest)
+		Error("无效的 JSON")
 		return
 	}
 	
 	// 参数校验
 	if len(req.Message) == 0 || (req.UserID == "" && req.GroupID == "") {
 		http.Error(w, "参数缺失", http.StatusBadRequest)
+		Error("参数缺失")
 		return
 	}
 	
@@ -74,24 +76,24 @@ func sendHandler(w http.ResponseWriter, r *http.Request) {
 func SendHttpReq(jsonData []byte) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("panic: %v, %v\n", r, string(debug.Stack()))
+			Error("http panic", "err", r, "stack", string(debug.Stack()))
 		}
 	}()
 	
 	time.Sleep(time.Duration(config.SendInterval) * time.Millisecond)
 	jsonReq, err := HandleMsg(jsonData)
 	if err != nil {
-		log.Printf("JSON 序列化失败: %v\n", err)
+		Error("JSON 序列化失败", "err", err)
 		return
 	}
 	if jsonReq == nil {
 		return
 	}
 	
-	fmt.Printf("发送数据: %s\n", string(jsonReq))
+	Info("发送数据", "msg", string(jsonReq))
 	req, err := http.NewRequest("POST", config.SendURL, bytes.NewBuffer(jsonReq))
 	if err != nil {
-		log.Printf("创建请求失败: %v\n", err)
+		Error("创建请求失败", "err", err)
 		return
 	}
 	
@@ -107,7 +109,7 @@ func SendHttpReq(jsonData []byte) {
 	// 6. 执行请求
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("请求执行失败: %v\n", err)
+		Error("请求执行失败", "err", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -115,9 +117,9 @@ func SendHttpReq(jsonData []byte) {
 	// 7. 读取返回结果
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("读取响应失败: %v\n", err)
+		Error("读取响应失败", "err", err)
 		return
 	}
 	
-	fmt.Printf("状态码: %d 返回内容: %s\n", resp.StatusCode, string(body))
+	Info("返回内容", "status", resp.StatusCode, "body", string(body))
 }

@@ -101,20 +101,20 @@ function generateBytes(n) {
 // 双方公共使用的地址
 var triggerX1Payload;
 var triggerX0;
-var req2bufEnterAddr = baseAddr.add(0x36F1614);
-var req2bufExitAddr = baseAddr.add(0x36F27EC);
-var sendFuncAddr = baseAddr.add(0x47F1888);
+var req2bufEnterAddr = baseAddr.add(0x36FC204);
+var req2bufExitAddr = baseAddr.add(0x36FD3DC);
+var sendFuncAddr = baseAddr.add(0x47FE448);
 var insertMsgAddr = ptr(0);
 var sendMsgType = "";
 
 // 图片消息全局变量
-var uploadImageAddr = baseAddr.add(0x4938E08);
-var imgProtobufAddr = baseAddr.add(0x2455574);
-var patchImgProtobufFunc1 = baseAddr.add(0x2455530)
-var patchImgProtobufFunc2 = baseAddr.add(0x2455550);
-var imgProtobufDeleteAddr = baseAddr.add(0x245558C);
-var CndOnCompleteAddr = baseAddr.add(0x36B03A0);
-var imgMessageCallbackFunc1 = baseAddr.add(0x8780AD8);
+var uploadImageAddr = baseAddr.add(0x49459C8);
+var imgProtobufAddr = baseAddr.add(0x245D164);
+var patchImgProtobufFunc1 = baseAddr.add(0x245D120)
+var patchImgProtobufFunc2 = baseAddr.add(0x245D140);
+var imgProtobufDeleteAddr = baseAddr.add(0x245D17C);
+var CndOnCompleteAddr = baseAddr.add(0x36BAFC0);
+var imgMessageCallbackFunc1 = baseAddr.add(0x8790DD8);
 
 var uploadImageX1;
 var imgCgiAddr = ptr(0);
@@ -673,7 +673,7 @@ function patchCdnOnComplete() {
 setImmediate(patchCdnOnComplete)
 
 function attachGetCallbackFromWrapper() {
-    Interceptor.attach(baseAddr.add(0x49068CC), {
+    Interceptor.attach(baseAddr.add(0x491348C), {
         onEnter: function (args) {
             const tmpFileId = this.context.x1.readPointer().readUtf8String();
             const fileId = imageIdAddr.readUtf8String();
@@ -682,13 +682,13 @@ function attachGetCallbackFromWrapper() {
                 return
             }
 
-            uploadCallback.add(0x10).writePointer(baseAddr.add(0x36AFBEC));
+            uploadCallback.add(0x10).writePointer(baseAddr.add(0x36BA7DC));
             this.context.x8 = uploadCallback;
             console.log("[+] GetCallbackFromWrapper x8: " + this.context.x8);
         }
     })
 
-    Interceptor.attach(baseAddr.add(0x4906EC8), {
+    Interceptor.attach(baseAddr.add(0x4913A88), {
         onEnter: function (args) {
             const tmpFileId = this.context.x1.readPointer().readUtf8String();
             const fileId = imageIdAddr.readUtf8String();
@@ -698,7 +698,7 @@ function attachGetCallbackFromWrapper() {
             }
 
             console.log("[+] OnComplete x8: " + this.context.x8);
-            uploadCallback.add(0x30).writePointer(baseAddr.add(0x36B0DD0));
+            uploadCallback.add(0x30).writePointer(baseAddr.add(0x36BB9C0));
             this.context.x8 = uploadCallback;
         }
     })

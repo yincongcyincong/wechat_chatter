@@ -10,7 +10,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	log "log"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -161,7 +160,7 @@ func HandleMsg(jsonData []byte) ([]byte, error) {
 	m := new(WechatMessage)
 	err := json.Unmarshal(jsonData, m)
 	if err != nil {
-		log.Printf("解析消息失败: %v\n", err)
+		Error("解析消息失败", "err", err)
 		return nil, err
 	}
 	myWechatId = m.SelfID
@@ -173,16 +172,16 @@ func HandleMsg(jsonData []byte) ([]byte, error) {
 		if msg.Type == "record" {
 			path, err := SaveAudioFile(msg.Data.Media)
 			if err != nil {
-				log.Printf("保存音频失败: %v\n", err)
+				Error("保存音频失败", "err", err)
 				return nil, err
 			}
 			msg.Data.URL = "file://" + path
 			msg.Data.Media = nil
 		} else if msg.Type == "image" {
 			var fileMsg FileMsg
-			err := xml.Unmarshal([]byte(msg.Data.Text), &fileMsg)
+			err = xml.Unmarshal([]byte(msg.Data.Text), &fileMsg)
 			if err != nil {
-				log.Printf("XML解析失败: %v\n", err)
+				Error("XML解析失败", "err", err)
 				return nil, err
 			}
 			
@@ -193,7 +192,7 @@ func HandleMsg(jsonData []byte) ([]byte, error) {
 					aesKey, _ := hex.DecodeString(fileMsg.Image.ThumbAesKey)
 					path, err := GetImagePath(downloadReq.Media, aesKey)
 					if err != nil {
-						log.Printf("获取图片路径失败: %v\n", err)
+						Error("获取图片路径失败", "err", err)
 						return nil, err
 					}
 					msg.Data.URL = "file://" + path

@@ -78,23 +78,23 @@ function patchString(addr, plainStr) {
 // -------------------------全局变量分区-------------------------
 
 // 文本消息全局变量
-var protobufAddr = baseAddr.add(0x245E9B0);
-var patchTextProtobufAddr = baseAddr.add(0x245E98C);
-var PatchTextProtobufDeleteAddr = baseAddr.add(0x245E9C8);
+var protobufAddr = baseAddr.add(0x24665A0);
+var patchTextProtobufAddr = baseAddr.add(0x246657C);
+var PatchTextProtobufDeleteAddr = baseAddr.add(0x24665B8);
 var textCgiAddr = ptr(0);
 var sendTextMessageAddr = ptr(0);
 var textMessageAddr = ptr(0);
 var textProtoX1PayloadAddr = ptr(0);
 var sendMessageCallbackFunc = ptr(0);
-var messageCallbackFunc1 = baseAddr.add(0x8781010);
+var messageCallbackFunc1 = baseAddr.add(0x8791310);
 
 
 // 双方公共使用的地址
 var triggerX1Payload;
 var triggerX0;
-var req2bufEnterAddr = baseAddr.add(0x36F1614);
-var req2bufExitAddr = baseAddr.add(0x36F27EC);
-var sendFuncAddr = baseAddr.add(0x47F1888);
+var req2bufEnterAddr = baseAddr.add(0x36FC204);
+var req2bufExitAddr = baseAddr.add(0x36FD3DC);
+var sendFuncAddr = baseAddr.add(0x47FE448);
 var insertMsgAddr = ptr(0);
 var sendMsgType = "";
 

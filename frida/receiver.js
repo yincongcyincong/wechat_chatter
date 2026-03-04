@@ -3,8 +3,8 @@ if (!baseAddr) {
     console.error("[!] 找不到 WeChat 模块基址，请检查进程名。");
 }
 
-var buf2RespAddr = baseAddr.add(0x37173B0)
-var downloadImagAddr = baseAddr.add(0x49FB92C)
+var buf2RespAddr = baseAddr.add(0x3721FA0)
+var downloadImagAddr = baseAddr.add(0x4A084EC)
 
 // -------------------------接收消息分区-------------------------
 function setReceiver() {

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"runtime/debug"
 	"strings"
@@ -32,25 +31,23 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	var err error
 	conn, err = upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println("升级失败:", err)
+		Error("升级失败", "err", err)
 		return
 	}
 	defer conn.Close()
-	
-	fmt.Println("机器人已连接！")
 	
 	for {
 		m := new(OneBotWSMsg)
 		_, msgByte, err := conn.ReadMessage()
 		if err != nil {
-			log.Println("读取失败:", err)
+			Error("读取失败", "err", err)
 			break
 		}
 		
-		fmt.Println("收到消息: " + string(msgByte))
+		Info("收到消息", "msg", string(msgByte))
 		err = json.Unmarshal(msgByte, m)
 		if err != nil {
-			log.Println("解析失败:", err)
+			Error("解析失败", "err", err)
 			continue
 		}
 		
@@ -65,13 +62,13 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				},
 			})
 			if err != nil {
-				log.Println("写入失败:", err)
+				Error("写入失败", "err", err)
 				break
 			}
 		case "send_private_msg", "send_group_msg":
 			err = SendWS(m.Params)
 			if err != nil {
-				log.Println("发送失败:", err)
+				Error("发送失败", "err", err)
 				break
 			}
 			
@@ -84,25 +81,30 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 func SendWebSocketMsg(jsonData []byte) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("panic: %v, %v\n", r, string(debug.Stack()))
+			Error("ws panic", "err", r, "stack", string(debug.Stack()))
 		}
 	}()
+	
+	if conn == nil {
+		Error("连接为空")
+		return
+	}
 	
 	time.Sleep(time.Duration(config.SendInterval) * time.Millisecond)
 	
 	jsonReq, err := HandleMsg(jsonData)
 	if err != nil {
-		log.Printf("JSON 序列化失败: %v\n", err)
+		Error("JSON 序列化失败", "err", err)
 		return
 	}
 	if jsonReq == nil {
 		return
 	}
 	
-	fmt.Printf("发送数据: %s\n", string(jsonReq))
+	Info("发送数据", "msg", string(jsonReq))
 	err = conn.WriteMessage(websocket.TextMessage, jsonReq)
 	if err != nil {
-		log.Printf("发送消息失败: %v\n", err)
+		Error("发送消息失败", "err", err)
 		return
 	}
 }
@@ -115,13 +117,13 @@ func SendWS(req *WSParams) error {
 	} else {
 		bytes, err := json.Marshal(req.Message)
 		if err != nil {
-			log.Printf("JSON 序列化失败: %v\n", err)
+			Error("JSON 序列化失败", "err", err)
 			return err
 		}
 		msgs := make([]*Message, 0)
 		err = json.Unmarshal(bytes, &msgs)
 		if err != nil {
-			log.Printf("JSON 反序列化失败: %v\n", err)
+			Error("JSON 反序列化失败", "err", err)
 			return err
 		}
 		
@@ -164,13 +166,13 @@ func SendWS(req *WSParams) error {
 func testWebSocket(w http.ResponseWriter, r *http.Request) {
 	jsonData, err := io.ReadAll(r.Body)
 	if err != nil {
-		log.Printf("读取消息失败: %v\n", err)
+		Error("读取消息失败", "err", err)
 		return
 	}
 	
 	err = conn.WriteMessage(websocket.TextMessage, jsonData)
 	if err != nil {
-		log.Printf("发送消息失败: %v\n", err)
+		Error("发送消息失败", "err", err)
 		return
 	}
 }

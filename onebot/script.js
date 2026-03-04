@@ -556,12 +556,12 @@ function attachSendTextProto() {
             this.context.x1 = textProtoX1PayloadAddr;
             this.context.x2 = ptr(finalPayload.length);
 
-            console.log("[+] 寄存器修改完成: X1=" + this.context.x1 + ", X2=" + this.context.x2, hexdump(textProtoX1PayloadAddr, {
-                offset: 0,
-                length: 128,
-                header: true,
-                ansi: true
-            }));
+            // console.log("[+] 寄存器修改完成: X1=" + this.context.x1 + ", X2=" + this.context.x2, hexdump(textProtoX1PayloadAddr, {
+            //     offset: 0,
+            //     length: 128,
+            //     header: true,
+            //     ansi: true
+            // }));
         },
     });
 }
