@@ -293,7 +293,7 @@ var imgProtobufDeleteAddr = imageCallbackFuncAddr.add(0x6c);
 var imgProtobufDeleteAddrByte;
 
 // 视频消息全局变量
-var videoCallbackFuncAddr = baseAddr.add(0x24C76C8);
+var videoCallbackFuncAddr = baseAddr.add({{.videoCallbackFuncAddr}});
 var videoProtobufAddr = videoCallbackFuncAddr.add(0x54);
 var patchVideoProtobufFunc1 = videoCallbackFuncAddr.add(0x10);
 var patchVideoProtobufFunc1Byte;
@@ -305,7 +305,7 @@ var videoProtobufDeleteAddrByte;
 var uploadImageAddr = baseAddr.add({{.uploadImageAddr}});
 var CndOnCompleteAddr = baseAddr.add({{.CndOnCompleteAddr}});
 var imgMessageCallbackFunc1 = baseAddr.add({{.imgMessageCallbackFunc1}});
-var videoMessageCallbackFunc1 = baseAddr.add(0x8793B78);
+var videoMessageCallbackFunc1 = baseAddr.add({{.videoMessageCallbackFunc1}});
 
 var uploadGetCallbackWrapperAddr = baseAddr.add({{.uploadGetCallbackWrapperAddr}});
 var uploadGetCallbackWrapperFuncAddr = baseAddr.add({{.uploadGetCallbackWrapperFuncAddr}});
@@ -1162,12 +1162,12 @@ function attachProto() {
             var currTaskId = this.context.sp.add(0x30).readU32();
             if (currTaskId !== taskIdGlobal) {
                 console.log(`[+] 拦截到非目标 currTaskId: ${currTaskId} taskIdGlobal: ${taskIdGlobal}`);
-                console.log("[+] 视频寄存器修改完成: X1=" + this.context.x1 + ", X2=" + this.context.x2, hexdump(this.context.x1, {
-                    offset: 0,
-                    length: 1028,
-                    header: true,
-                    ansi: true
-                }));
+                // console.log("[+] 视频寄存器修改完成: X1=" + this.context.x1 + ", X2=" + this.context.x2, hexdump(this.context.x1, {
+                //     offset: 0,
+                //     length: 1028,
+                //     header: true,
+                //     ansi: true
+                // }));
                 return
             }
 

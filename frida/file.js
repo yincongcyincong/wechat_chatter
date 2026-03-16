@@ -1082,12 +1082,12 @@ function attachUploadMedia() {
         onEnter: function (args) {
             uploadGlobalX0 = this.context.x0;
             const selfId = this.context.x1.add(0x68).readUtf8String();
-            const imagePath = this.context.x1.add(0xe0).readPointer().readUtf8String();
+            const filePath = this.context.x1.add(0xe0).readPointer().readUtf8String();
             send({
                 type: "upload",
                 self_id: selfId,
             })
-            console.log("UploadMedia x0: " + uploadGlobalX0 + " filePath: " + imagePath + " selfId: " + selfId);
+            console.log("UploadMedia x0: " + uploadGlobalX0 + " filePath: " + filePath + " selfId: " + selfId);
         }
     })
 }

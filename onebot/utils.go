@@ -60,64 +60,6 @@ func SaveBase64Image(base64Data string) (string, string, error) {
 	return targetPath, md5Str, nil
 }
 
-// SaveVideoWithSalt 保存视频并进行无损去重（不破坏播放）
-func SaveVideoWithSalt(base64Data string) (string, string, error) {
-	rawContents := base64Data
-	if strings.HasPrefix(base64Data, "base64://") {
-		rawContents = strings.TrimPrefix(base64Data, "base64://")
-	} else if idx := strings.Index(base64Data, ","); idx != -1 {
-		rawContents = base64Data[idx+1:]
-	}
-	
-	data, err := base64.StdEncoding.DecodeString(rawContents)
-	if err != nil {
-		return "", "", fmt.Errorf("base64 decode failed: %v", err)
-	}
-	
-	// --- 无损去重核心逻辑 ---
-	// 构造一个合法的 MP4 'free' box
-	// 格式: [4字节长度][4字节类型'free'][随机数据]
-	saltContent := []byte(fmt.Sprintf("md5_salt_%d_%d", time.Now().UnixNano(), rand.Intn(10000)))
-	boxLen := uint32(len(saltContent) + 8)
-	freeBox := make([]byte, 8)
-	// 写入大端序长度 (4字节)
-	freeBox[0] = byte(boxLen >> 24)
-	freeBox[1] = byte(boxLen >> 16)
-	freeBox[2] = byte(boxLen >> 8)
-	freeBox[3] = byte(boxLen)
-	// 写入 'free' 标识 (4字节)
-	copy(freeBox[4:], []byte("free"))
-	
-	// 将 free box 追加到文件末尾（比直接追加字符串安全得多）
-	data = append(data, freeBox...)
-	data = append(data, saltContent...)
-	// -----------------------
-	
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	randomNumber := r.Intn(1000)
-	timestamp := time.Now().Unix()
-	
-	// 假设你已有 DetectFileFormat
-	fileName := fmt.Sprintf("%d_%d.%s", randomNumber, timestamp, DetectFileFormat(data))
-	targetPath := config.ImagePath + fileName
-	dir := filepath.Dir(targetPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return "", "", fmt.Errorf("create directory failed: %v", err)
-	}
-	
-	err = os.WriteFile(targetPath, data, 0644)
-	if err != nil {
-		return "", "", fmt.Errorf("write file failed: %v", err)
-	}
-	
-	md5Str, err := GetFileMD5(targetPath)
-	if err != nil {
-		return "", "", fmt.Errorf("get file md5 failed: %v", err)
-	}
-	
-	return targetPath, md5Str, nil
-}
-
 func GetFileMD5(filePath string) (string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {

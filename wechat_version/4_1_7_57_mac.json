@@ -16,5 +16,7 @@
   "downloadImagAddr": "0x4A6975C",
   "startDownloadMedia": "0x494663C",
   "downloadFileAddr": "0x4A084EC",
-  "downloadVideoAddr": "0x4A2A268"
+  "downloadVideoAddr": "0x4A2A268",
+  "videoCallbackFuncAddr": "0x24C76C8",
+  "videoMessageCallbackFunc1": "0x8793B78"
 }
