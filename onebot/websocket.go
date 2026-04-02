@@ -8,7 +8,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"time"
-	
+
 	"github.com/gorilla/websocket"
 )
 
@@ -35,7 +35,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.Close()
-	
+
 	for {
 		m := new(OneBotWSMsg)
 		_, msgByte, err := conn.ReadMessage()
@@ -43,14 +43,14 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			Error("读取失败", "err", err)
 			break
 		}
-		
+
 		Info("收到消息", "msg", string(msgByte))
 		err = json.Unmarshal(msgByte, m)
 		if err != nil {
 			Error("解析失败", "err", err)
 			continue
 		}
-		
+
 		switch m.Action {
 		case "get_login_info":
 			err = conn.WriteJSON(map[string]any{
@@ -84,11 +84,11 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				Error("发送失败", "err", err)
 				break
 			}
-			
+
 		}
-		
+
 	}
-	
+
 }
 
 func SendWebSocketMsg(jsonData []byte) {
@@ -97,14 +97,14 @@ func SendWebSocketMsg(jsonData []byte) {
 			Error("ws panic", "err", r, "stack", string(debug.Stack()))
 		}
 	}()
-	
+
 	if conn == nil {
 		Error("连接为空")
 		return
 	}
-	
+
 	time.Sleep(time.Duration(config.SendInterval) * time.Millisecond)
-	
+
 	jsonReq, err := HandleMsg(jsonData)
 	if err != nil {
 		Error("JSON 序列化失败", "err", err)
@@ -113,7 +113,7 @@ func SendWebSocketMsg(jsonData []byte) {
 	if jsonReq == nil {
 		return
 	}
-	
+
 	Info("发送数据", "msg", string(jsonReq))
 	err = conn.WriteMessage(websocket.TextMessage, jsonReq)
 	if err != nil {
@@ -139,7 +139,7 @@ func SendWS(req *WSParams) error {
 			Error("JSON 反序列化失败", "err", err)
 			return err
 		}
-		
+
 		for _, v := range msgs {
 			if v.Type == "text" {
 				sendContent += v.Data.Text
@@ -150,28 +150,36 @@ func SendWS(req *WSParams) error {
 						atUserID += v.Data.QQ + ","
 					}
 				}
-				
+
 			} else if v.Type == "image" || v.Type == "video" {
-				msgChan <- &SendMsg{
-					UserId:  req.UserID,
-					GroupID: req.GroupID,
-					Content: v.Data.File,
-					Type:    v.Type,
+				fileData, err := decodeAndValidateMediaMessage(v.Type, v.Data.File)
+				if err != nil {
+					return err
+				}
+				if err := executeSendMsg(&SendMsg{
+					UserId:   req.UserID,
+					GroupID:  req.GroupID,
+					Type:     v.Type,
+					FileData: fileData,
+				}); err != nil {
+					return err
 				}
 			}
 		}
 	}
-	
+
 	if sendContent != "" {
-		msgChan <- &SendMsg{
+		if err := executeSendMsg(&SendMsg{
 			UserId:  req.UserID,
 			GroupID: req.GroupID,
 			Content: sendContent,
 			Type:    "text",
 			AtUser:  strings.TrimRight(atUserID, ","),
+		}); err != nil {
+			return err
 		}
 	}
-	
+
 	return nil
 }
 
@@ -181,7 +189,7 @@ func testWebSocket(w http.ResponseWriter, r *http.Request) {
 		Error("读取消息失败", "err", err)
 		return
 	}
-	
+
 	err = conn.WriteMessage(websocket.TextMessage, jsonData)
 	if err != nil {
 		Error("发送消息失败", "err", err)

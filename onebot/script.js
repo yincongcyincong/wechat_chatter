@@ -333,6 +333,7 @@ var uploadFunc1Addr = ptr(0)
 var uploadFunc2Addr = ptr(0)
 var imageIdAddr = ptr(0)
 var md5Addr = ptr(0)
+var uploadRequestIdGlobal = ""
 var uploadAesKeyAddr = ptr(0)
 var ImagePathAddr1 = ptr(0)
 var uploadCallback = ptr(0)
@@ -702,6 +703,8 @@ function attachReq2buf() {
             if (!this.context.x25.equals(taskIdGlobal)) {
                 return;
             }
+            const finishedTaskId = taskIdGlobal;
+            const finishedSendType = sendMsgType;
             insertMsgAddr.writeU64(0x0);
             console.log("[+] 清空写入后内存预览: " + insertMsgAddr.readPointer());
             taskIdGlobal = 0;
@@ -709,8 +712,11 @@ function attachReq2buf() {
             senderGlobal = "";
             contentGlobal = "";
             atUserGlobal = "";
+            sendMsgType = "";
             send({
                 type: "finish",
+                task_id: String(finishedTaskId),
+                send_type: finishedSendType,
             })
         }
     });
@@ -1321,7 +1327,8 @@ function attachProto() {
 setImmediate(attachProto);
 
 
-function triggerUploadImg(receiver, md5, imagePath) {
+function triggerUploadImg(requestId, receiver, md5, imagePath) {
+    uploadRequestIdGlobal = requestId;
     const payload = [
         0x20, 0x05, 0x33, 0x8C, 0x0B, 0x00, 0x00, 0x00, // 函数 10802b8b0 的指针
         0x00, 0x05, 0x33, 0x8C, 0x0B, 0x00, 0x00, 0x00, // 函数 107fd5908 的指针
@@ -1429,7 +1436,8 @@ function triggerUploadImg(receiver, md5, imagePath) {
     return startUploadMedia(uploadGlobalX0, uploadImageX1);
 }
 
-function triggerUploadVideo(receiver, md5, videoPath) {
+function triggerUploadVideo(requestId, receiver, md5, videoPath) {
+    uploadRequestIdGlobal = requestId;
     const payload = [
         0x20, 0x05, 0x33, 0x8C, 0x0B, 0x00, 0x00, 0x00, // 函数 10802b8b0 的指针
         0x00, 0x05, 0x33, 0x8C, 0x0B, 0x00, 0x00, 0x00, // 函数 107fd5908 的指针
@@ -1595,10 +1603,6 @@ function patchCdnOnComplete() {
                 console.log("X2: " + x2 + "[+] cdnKey: " + cdnKey + " aesKey: " + aesKey +
                     " md5Key: " + md5Key + " videoId:" + videoId);
 
-                send({
-                    type: "finish",
-                });
-
                 if (cdnKey !== "" && cdnKey != null && aesKey !== "" && aesKey != null &&
                     md5Key !== "" && md5Key != null) {
 
@@ -1614,11 +1618,13 @@ function patchCdnOnComplete() {
                         });
                         send({
                             type: "upload_video_finish",
+                            request_id: uploadRequestIdGlobal,
                             target_id: targetId,
                             cdn_key: cdnKey,
                             aes_key: aesKey,
                             md5_key: md5Key
                         });
+                        uploadRequestIdGlobal = "";
                     } else {
                         // 图片
                         pushImageUploadInfo({
@@ -1629,17 +1635,32 @@ function patchCdnOnComplete() {
                         });
                         send({
                             type: "upload_image_finish",
+                            request_id: uploadRequestIdGlobal,
                             target_id: targetId,
                             cdn_key: cdnKey,
                             aes_key: aesKey,
                             md5_key: md5Key
                         });
+                        uploadRequestIdGlobal = "";
                     }
                 } else {
                     console.error("cdnKey or aesKey or md5key 为空");
+                    send({
+                        type: "upload_failed",
+                        request_id: uploadRequestIdGlobal,
+                        target_id: targetId,
+                        message: "cdnKey or aesKey or md5key 为空"
+                    });
+                    uploadRequestIdGlobal = "";
                 }
             } catch (e) {
                 console.log("[-] Memory access error at onEnter: " + e);
+                send({
+                    type: "upload_failed",
+                    request_id: uploadRequestIdGlobal,
+                    message: String(e)
+                });
+                uploadRequestIdGlobal = "";
             }
         }
     });

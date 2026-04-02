@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -10,12 +11,25 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
-	"strings"
 	"syscall"
 	"text/template"
 
 	"github.com/frida/frida-go/frida"
 )
+
+func payloadString(pMap map[string]interface{}, key string) string {
+	if v, ok := pMap[key]; ok {
+		switch val := v.(type) {
+		case string:
+			return val
+		case float64:
+			return fmt.Sprintf("%.0f", val)
+		default:
+			return fmt.Sprint(val)
+		}
+	}
+	return ""
+}
 
 func main() {
 	initFlag()
@@ -187,37 +201,30 @@ func loadJs() {
 								go SendWebSocketMsg(payloadJson)
 							}
 						case "finish":
-							finishChan <- struct{}{}
+							taskID := payloadString(pMap, "task_id")
+							if taskID != "" {
+								resolvePendingResult(&pendingTaskMap, taskID, nil)
+							}
 						case "upload":
 							if selfId, ok := pMap["self_id"]; ok && myWechatId == "" {
 								myWechatId = selfId.(string)
 							}
 						case "upload_image_finish":
-							m := &SendMsg{
-								Type: "send_image",
+							requestID := payloadString(pMap, "request_id")
+							if requestID != "" {
+								resolvePendingResult(&pendingUploadMap, requestID, nil)
 							}
-							if targetIdInter, ok := pMap["target_id"]; ok {
-								targetIdStr := targetIdInter.(string)
-								if strings.Contains(targetIdStr, "wxid_") {
-									m.UserId = targetIdStr
-								} else {
-									m.GroupID = targetIdStr
-								}
-							}
-							msgChan <- m
 						case "upload_video_finish":
-							m := &SendMsg{
-								Type: "send_video",
+							requestID := payloadString(pMap, "request_id")
+							if requestID != "" {
+								resolvePendingResult(&pendingUploadMap, requestID, nil)
 							}
-							if targetIdInter, ok := pMap["target_id"]; ok {
-								targetIdStr := targetIdInter.(string)
-								if strings.Contains(targetIdStr, "wxid_") {
-									m.UserId = targetIdStr
-								} else {
-									m.GroupID = targetIdStr
-								}
+						case "upload_failed":
+							requestID := payloadString(pMap, "request_id")
+							errMsg := payloadString(pMap, "message")
+							if requestID != "" {
+								resolvePendingResult(&pendingUploadMap, requestID, errors.New(errMsg))
 							}
-							msgChan <- m
 						case "download":
 							err = Download(payloadJson)
 							if err != nil {
