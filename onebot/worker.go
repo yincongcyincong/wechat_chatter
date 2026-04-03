@@ -1,14 +1,21 @@
 package main
 
 import (
-	"context"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"runtime/debug"
+	"sync"
 	"sync/atomic"
 	"time"
+)
+
+const (
+	sendStageTimeout   = 15 * time.Second
+	uploadStageTimeout = 30 * time.Second
+	requestWaitTimeout = 45 * time.Second
 )
 
 func SendWorker() {
@@ -18,98 +25,147 @@ func SendWorker() {
 			go SendWorker()
 		}
 	}()
-	
+
 	for {
-		select {
-		case <-finishChan:
-			Info("收到完成信号")
-		case m, ok := <-msgChan:
-			if !ok {
-				Fatal("发送通道关闭")
-				return
-			}
-			SendWechatMsg(m)
+		m, ok := <-msgChan
+		if !ok {
+			Fatal("发送通道关闭")
+			return
+		}
+
+		err := SendWechatMsg(m)
+		if m.ResultCh != nil {
+			m.ResultCh <- err
 		}
 	}
 }
 
-func SendWechatMsg(m *SendMsg) {
+func registerPendingResult(m *sync.Map, key string) chan error {
+	ch := make(chan error, 1)
+	m.Store(key, ch)
+	return ch
+}
+
+func waitPendingResult(m *sync.Map, key string, ch chan error, timeout time.Duration, stage string) error {
+	select {
+	case err := <-ch:
+		return err
+	case <-time.After(timeout):
+		m.Delete(key)
+		return fmt.Errorf("%s timeout", stage)
+	}
+}
+
+func resolvePendingResult(m *sync.Map, key string, err error) {
+	if chInter, ok := m.LoadAndDelete(key); ok {
+		ch := chInter.(chan error)
+		ch <- err
+	}
+}
+
+func nextTaskID() int64 {
+	return atomic.AddInt64(&taskId, 1)
+}
+
+func nextRequestID() string {
+	return fmt.Sprintf("upload-%d-%d", time.Now().UnixNano(), atomic.AddInt64(&requestSeq, 1))
+}
+
+func taskKey(taskID int64) string {
+	return fmt.Sprintf("%d", taskID)
+}
+
+func runSendTask(taskID int64, targetID, stage string, call func() any) error {
+	key := taskKey(taskID)
+	ch := registerPendingResult(&pendingTaskMap, key)
+
+	result := fmt.Sprint(call())
+	Info("📩 发送任务执行结果", "stage", stage, "result", result, "task_id", taskID, "target_id", targetID)
+	if result != "1" {
+		pendingTaskMap.Delete(key)
+		return fmt.Errorf("%s failed: result=%s", stage, result)
+	}
+
+	return waitPendingResult(&pendingTaskMap, key, ch, sendStageTimeout, stage)
+}
+
+func runUploadTask(requestID, stage string, call func() any) error {
+	ch := registerPendingResult(&pendingUploadMap, requestID)
+
+	result := fmt.Sprint(call())
+	Info("📩 上传任务执行结果", "stage", stage, "result", result, "request_id", requestID)
+	if result != "0" {
+		pendingUploadMap.Delete(requestID)
+		return fmt.Errorf("%s failed: result=%s", stage, result)
+	}
+
+	return waitPendingResult(&pendingUploadMap, requestID, ch, uploadStageTimeout, stage)
+}
+
+func SendWechatMsg(m *SendMsg) error {
 	time.Sleep(time.Duration(config.SendInterval) * time.Millisecond)
-	currTaskId := atomic.AddInt64(&taskId, 1)
-	Info("📩 收到任务", "task_id", currTaskId, "type", m.Type)
-	
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	
+	Info("📩 收到任务", "type", m.Type, "request_id", m.RequestID)
+
 	targetId := m.UserId
 	if m.GroupID != "" {
 		targetId = m.GroupID
 	}
-	
+
 	if targetId == "" {
-		Error("目标为空", "task_id", currTaskId, "target_id", targetId)
-		return
+		return errors.New("target is empty")
 	}
-	
+
 	switch m.Type {
 	case "text":
-		result := fridaScript.ExportsCall("triggerSendTextMessage", currTaskId, targetId, m.Content, m.AtUser)
-		Info("📩 发送文本任务执行结果", "result", result, "task_id", currTaskId, "target_id", targetId, "at_user", m.AtUser)
-		if result != "1" {
-			Error("发送文本失败", "task_id", currTaskId, "target_id", targetId, "result", result)
-			return
-		}
+		currTaskID := nextTaskID()
+		return runSendTask(currTaskID, targetId, "send_text", func() any {
+			return fridaScript.ExportsCall("triggerSendTextMessage", currTaskID, targetId, m.Content, m.AtUser)
+		})
 	case "image":
-		targetPath, md5Str, err := SaveBase64Image(m.Content)
+		targetPath, md5Str, err := SaveImageData(m.FileData)
 		if err != nil {
-			Error("保存图片失败", "err", err)
-			return
+			return fmt.Errorf("save image failed: %w", err)
 		}
-		
-		result := fridaScript.ExportsCall("triggerUploadImg", targetId, md5Str, targetPath)
-		Info("📩 上传图片任务执行结果", "result", result, "target_id", targetId, "md5", md5Str, "path", targetPath)
-		if result != "0" {
-			Error("上传图片失败", "target_id", targetId, "md5", md5Str, "result", result)
-			return
+		requestID := m.RequestID
+		if requestID == "" {
+			requestID = nextRequestID()
 		}
-	case "send_image":
-		result := fridaScript.ExportsCall("triggerSendImgMessage", currTaskId, myWechatId, targetId)
-		Info("📩 发送图片任务执行结果", "result", result, "task_id", currTaskId, "wechat_id", myWechatId, "target_id", targetId)
-		if result != "1" {
-			Error("上传图片失败", "task_id", currTaskId, "target_id", targetId, "result", result)
-			return
+		if err := runUploadTask(requestID, "upload_image", func() any {
+			return fridaScript.ExportsCall("triggerUploadImg", requestID, targetId, md5Str, targetPath)
+		}); err != nil {
+			return err
 		}
+		currTaskID := nextTaskID()
+		return runSendTask(currTaskID, targetId, "send_image", func() any {
+			return fridaScript.ExportsCall("triggerSendImgMessage", currTaskID, myWechatId, targetId)
+		})
 	case "video":
-		targetPath, md5Str, err := SaveBase64Image(m.Content)
+		targetPath, md5Str, err := SaveImageData(m.FileData)
 		if err != nil {
-			Error("保存图片失败", "err", err)
-			return
+			return fmt.Errorf("save video failed: %w", err)
 		}
-		
-		result := fridaScript.ExportsCall("triggerUploadVideo", targetId, md5Str, targetPath)
-		Info("📩 上传视频任务执行结果", "result", result, "target_id", targetId, "md5", md5Str, "path", targetPath)
-		if result != "0" {
-			Error("上传视频失败", "target_id", targetId, "md5", md5Str, "result", result)
-			return
+		requestID := m.RequestID
+		if requestID == "" {
+			requestID = nextRequestID()
 		}
-	case "send_video":
-		result := fridaScript.ExportsCall("triggerSendVideoMessage", currTaskId, myWechatId, targetId)
-		Info("📩 发送视频任务执行结果", "result", result, "task_id", currTaskId, "wechat_id", myWechatId, "target_id", targetId)
-		if result != "1" {
-			Error("上传图片失败", "task_id", currTaskId, "target_id", targetId, "result", result)
-			return
+		if err := runUploadTask(requestID, "upload_video", func() any {
+			return fridaScript.ExportsCall("triggerUploadVideo", requestID, targetId, md5Str, targetPath)
+		}); err != nil {
+			return err
 		}
+		currTaskID := nextTaskID()
+		return runSendTask(currTaskID, targetId, "send_video", func() any {
+			return fridaScript.ExportsCall("triggerSendVideoMessage", currTaskID, myWechatId, targetId)
+		})
 	case "download":
 		result := fridaScript.ExportsCall("triggerDownload", targetId, m.FIleCdnUrl, m.AesKey, m.FilePath, m.FileType)
-		Info("📩 下载任务执行结果", "result", result, "task_id", currTaskId, "wechat_id", myWechatId, "target_id", targetId)
+		Info("📩 下载任务执行结果", "result", result, "wechat_id", myWechatId, "target_id", targetId)
+		return nil
+	default:
+		return fmt.Errorf("unsupported message type: %s", m.Type)
 	}
-	
-	select {
-	case <-ctx.Done():
-		Error("任务执行超时！", "taskId", currTaskId)
-	case <-finishChan:
-		Info("收到完成信号，任务完成", "taskId", currTaskId)
-	}
+
+	return nil
 }
 
 func HandleMsg(jsonData []byte) ([]byte, error) {
@@ -123,7 +179,7 @@ func HandleMsg(jsonData []byte) ([]byte, error) {
 	if m.GroupId != "" {
 		userID2NicknameMap.Store(m.GroupId+"_"+m.UserID, m.Sender.Nickname)
 	}
-	
+
 	for _, msg := range m.Message {
 		switch msg.Type {
 		case "record":
@@ -141,15 +197,15 @@ func HandleMsg(jsonData []byte) ([]byte, error) {
 				Error("XML解析失败", "err", err)
 				return nil, err
 			}
-			
+
 			path, err := GetDownloadPath(fileMsg.Image.MidImgURL, fileMsg.Image.AesKey)
 			if err != nil {
 				Error("获取文件路径失败", "err", err)
 				return nil, err
 			}
-			
+
 			msg.Data.URL = "file://" + path
-		
+
 		case "file":
 			var fileMsg FileMsg
 			err = xml.Unmarshal([]byte(msg.Data.Text), &fileMsg)
@@ -162,7 +218,7 @@ func HandleMsg(jsonData []byte) ([]byte, error) {
 				Error("获取文件路径失败", "err", err)
 				return nil, err
 			}
-			
+
 			msg.Data.URL = "file://" + path
 		case "video":
 			var fileMsg FileMsg
@@ -176,7 +232,7 @@ func HandleMsg(jsonData []byte) ([]byte, error) {
 				Error("获取文件路径失败", "err", err)
 				return nil, err
 			}
-			
+
 			msg.Data.URL = "file://" + path
 		case "face":
 			var fileMsg FileMsg
@@ -185,19 +241,19 @@ func HandleMsg(jsonData []byte) ([]byte, error) {
 				Error("XML解析失败", "err", err)
 				return nil, err
 			}
-			
+
 			data, err := DownloadFile(fileMsg.Emoji.ThumbUrl)
 			if err != nil {
 				Error("下载表情失败", "err", err)
 				return nil, err
 			}
-			
+
 			path, err := DetectAndSaveImage(data)
 			if err != nil {
 				Error("保存表情失败", "err", err)
 				return nil, err
 			}
-			
+
 			msg.Data.URL = "file://" + path
 		}
 	}
@@ -211,17 +267,17 @@ func GetDownloadPath(cdnUrl, aesKeyStr string) (string, error) {
 			if downloadReq.FilePath != "" {
 				return downloadReq.FilePath, nil
 			}
-			
+
 			// 检查数据是否还在接收中
 			timeSinceLastAppend := time.Now().UnixMilli() - downloadReq.LastAppendTime
 			Info("文件等待下载", "url", cdnUrl, "times", i, "last_append_time", timeSinceLastAppend)
-			
+
 			// 如果数据仍在接收中（1秒内有新数据），继续等待
 			if timeSinceLastAppend < 1000 && i < 9 {
 				time.Sleep(2 * time.Second)
 				continue
 			}
-			
+
 			// 数据接收完成，尝试解密
 			if len(downloadReq.Media) > 0 {
 				aesKey, err := hex.DecodeString(aesKeyStr)
@@ -235,15 +291,15 @@ func GetDownloadPath(cdnUrl, aesKeyStr string) (string, error) {
 					userID2FileMsgMap.Delete(cdnUrl)
 					return "", err
 				}
-				
+
 				downloadReq.FilePath = filePath
 				downloadReq.Media = nil
 				return filePath, nil
 			}
 		}
-		
+
 		time.Sleep(2 * time.Second)
 	}
-	
+
 	return "", errors.New("文件下载超时或数据为空")
 }

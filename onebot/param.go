@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/xml"
 	"sync"
-	
+
 	"github.com/frida/frida-go/frida"
 )
 
@@ -13,15 +13,17 @@ var (
 	session     *frida.Session
 	device      frida.DeviceInt
 	taskId      = int64(0x20000000)
+	requestSeq  int64
 	myWechatId  = ""
-	
-	msgChan    = make(chan *SendMsg, 100)
-	finishChan = make(chan struct{}, 100)
-	
+
+	msgChan = make(chan *SendMsg, 100)
+
 	config = &Config{}
-	
+
 	userID2NicknameMap sync.Map
 	userID2FileMsgMap  sync.Map
+	pendingTaskMap     sync.Map
+	pendingUploadMap   sync.Map
 )
 
 type WechatMessage struct {
@@ -45,12 +47,15 @@ type Sender struct {
 }
 
 type SendMsg struct {
-	UserId  string
-	GroupID string
-	Content string
-	Type    string
-	AtUser  string
-	
+	UserId    string
+	GroupID   string
+	Content   string
+	Type      string
+	AtUser    string
+	FileData  []byte
+	RequestID string
+	ResultCh  chan error
+
 	FIleCdnUrl string
 	Md5        string
 	AesKey     string
@@ -88,7 +93,7 @@ type Config struct {
 	ImagePath       string `json:"image_path"`
 	ConnType        string `json:"conn_type"`
 	SendInterval    int    `json:"send_interval"`
-	
+
 	WechatConf string `json:"wechat_conf"`
 }
 
@@ -141,7 +146,7 @@ type Image struct {
 	HDHeight    int    `xml:"cdnhdheight,attr"`
 	HDWidth     int    `xml:"cdnhdwidth,attr"`
 	MidImgURL   string `xml:"cdnmidimgurl,attr"`
-	
+
 	// 子节点
 	SecHashInfo string `xml:"secHashInfoBase64"`
 	Live        Live   `xml:"live"`
