@@ -334,7 +334,6 @@ var uploadFunc2Addr = ptr(0)
 var imageIdAddr = ptr(0)
 var md5Addr = ptr(0)
 var uploadRequestIdGlobal = ""
-var uploadTargetIdGlobal = ""
 var uploadAesKeyAddr = ptr(0)
 var ImagePathAddr1 = ptr(0)
 var uploadCallback = ptr(0)
@@ -377,32 +376,6 @@ function pushImageUploadInfo(info) {
 function pushVideoUploadInfo(info) {
     videoUploadQueue.push(info);
     console.log("[+] 视频上传信息已入队，当前队列长度:", videoUploadQueue.length);
-}
-
-function matchesUploadFileId(fileId) {
-    if (!fileId) {
-        return false;
-    }
-
-    const imageFileId = imageIdAddr.isNull() ? "" : imageIdAddr.readUtf8String();
-    const videoFileId = videoIdAddr.isNull() ? "" : videoIdAddr.readUtf8String();
-    if (fileId === imageFileId || fileId === videoFileId) {
-        return true;
-    }
-
-    // Some WeChat builds rewrite the upload file id to:
-    //   wxid_<target>_<ts>_<seq>_2_wxam
-    // Instead of requiring exact equality with our synthetic "..._1" id,
-    // accept the receiver-scoped prefix while only one upload is in flight.
-    if (uploadTargetIdGlobal) {
-        const fallbackPrefix = "wxid_" + uploadTargetIdGlobal + "_";
-        if (fileId.startsWith(fallbackPrefix)) {
-            console.log("[+] fallback matched upload fileId: " + fileId + " target: " + uploadTargetIdGlobal);
-            return true;
-        }
-    }
-
-    return false;
 }
 
 // -------------------------上传队列 end-------------------------
@@ -1356,7 +1329,6 @@ setImmediate(attachProto);
 
 function triggerUploadImg(requestId, receiver, md5, imagePath) {
     uploadRequestIdGlobal = requestId;
-    uploadTargetIdGlobal = receiver;
     const payload = [
         0x20, 0x05, 0x33, 0x8C, 0x0B, 0x00, 0x00, 0x00, // 函数 10802b8b0 的指针
         0x00, 0x05, 0x33, 0x8C, 0x0B, 0x00, 0x00, 0x00, // 函数 107fd5908 的指针
@@ -1466,7 +1438,6 @@ function triggerUploadImg(requestId, receiver, md5, imagePath) {
 
 function triggerUploadVideo(requestId, receiver, md5, videoPath) {
     uploadRequestIdGlobal = requestId;
-    uploadTargetIdGlobal = receiver;
     const payload = [
         0x20, 0x05, 0x33, 0x8C, 0x0B, 0x00, 0x00, 0x00, // 函数 10802b8b0 的指针
         0x00, 0x05, 0x33, 0x8C, 0x0B, 0x00, 0x00, 0x00, // 函数 107fd5908 的指针
@@ -1615,9 +1586,9 @@ function patchCdnOnComplete() {
             try {
                 const x2 = this.context.x2;
                 const currentFileId = x2.add(0x20).readPointer().readUtf8String();
-                const imageFileId = imageIdAddr.isNull() ? "" : imageIdAddr.readUtf8String();
-                const videoFileId = videoIdAddr.isNull() ? "" : videoIdAddr.readUtf8String();
-                if (!matchesUploadFileId(currentFileId)) {
+                const imageFileId = imageIdAddr.readUtf8String();
+                const videoFileId = videoIdAddr.readUtf8String();
+                if (currentFileId !== imageFileId && currentFileId !== videoFileId) {
                     console.log("[-] CndOnComplete x2: " + x2 + " currentFileId: " + currentFileId +
                         " imageFileId: " + imageFileId + " videoFileId:" + videoFileId);
                     return;
@@ -1654,7 +1625,6 @@ function patchCdnOnComplete() {
                             md5_key: md5Key
                         });
                         uploadRequestIdGlobal = "";
-                        uploadTargetIdGlobal = "";
                     } else {
                         // 图片
                         pushImageUploadInfo({
@@ -1672,7 +1642,6 @@ function patchCdnOnComplete() {
                             md5_key: md5Key
                         });
                         uploadRequestIdGlobal = "";
-                        uploadTargetIdGlobal = "";
                     }
                 } else {
                     console.error("cdnKey or aesKey or md5key 为空");
@@ -1683,7 +1652,6 @@ function patchCdnOnComplete() {
                         message: "cdnKey or aesKey or md5key 为空"
                     });
                     uploadRequestIdGlobal = "";
-                    uploadTargetIdGlobal = "";
                 }
             } catch (e) {
                 console.log("[-] Memory access error at onEnter: " + e);
@@ -1693,7 +1661,6 @@ function patchCdnOnComplete() {
                     message: String(e)
                 });
                 uploadRequestIdGlobal = "";
-                uploadTargetIdGlobal = "";
             }
         }
     });
@@ -1706,9 +1673,9 @@ function attachGetCallbackFromWrapper() {
         onEnter: function (args) {
             try {
                 const tmpFileId = this.context.x1.readPointer().readUtf8String();
-                const imageFileId = imageIdAddr.isNull() ? "" : imageIdAddr.readUtf8String();
-                const videoFileId = videoIdAddr.isNull() ? "" : videoIdAddr.readUtf8String()
-                if (!matchesUploadFileId(tmpFileId)) {
+                const imageFileId = imageIdAddr.readUtf8String();
+                const videoFileId = videoIdAddr.readUtf8String()
+                if (tmpFileId !== imageFileId && tmpFileId !== videoFileId) {
                     console.log("[+] GetCallbackFromWrapper tmpFileId: " + tmpFileId + " imageFileId: " + imageFileId + " videoFileId:" + videoFileId);
                     return
                 }
@@ -1726,9 +1693,9 @@ function attachGetCallbackFromWrapper() {
         onEnter: function (args) {
             try {
                 const tmpFileId = this.context.x1.readPointer().readUtf8String();
-                const imageFileId = imageIdAddr.isNull() ? "" : imageIdAddr.readUtf8String();
-                const videoFileId = videoIdAddr.isNull() ? "" : videoIdAddr.readUtf8String()
-                if (!matchesUploadFileId(tmpFileId)) {
+                const imageFileId = imageIdAddr.readUtf8String();
+                const videoFileId = videoIdAddr.readUtf8String()
+                if (tmpFileId !== imageFileId && tmpFileId !== videoFileId) {
                     console.log("[+] OnComplete tmpFileId: " + tmpFileId + " imageFileId: " + imageFileId + " videoFileId:" + videoFileId);
                     return
                 }
