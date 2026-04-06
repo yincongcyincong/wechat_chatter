@@ -161,12 +161,6 @@ var uploadVideoX1 = ptr(0);
 var videoIdAddr = ptr(0);
 var videoPathAddr1 = ptr(0)
 
-// 存储非图片/视频文件的CDN上传信息
-var fileCdnInfo = {
-    cdnKey: "",
-    aesKey: "",
-    md5Key: ""
-};
 
 // -------------------------上传队列 (解决并发问题)-------------------------
 // 图片上传完成队列 - 存储 {cdnKey, aesKey, md5Key, targetId}
@@ -855,24 +849,24 @@ function attachVideoProto() {
                 0x65, 0x3E, 0x3C, 0x2F, 0x6D, 0x73, 0x67, 0x73, 0x6F, 0x75, 0x72, 0x63,
                 0x65, 0x3E]
 
-            const cdnHeader = [0x82, 0x01, 0xb2, 0x01]
+            const cdnHeader = [0x82, 0x01, 0xF0, 0x01]
             // 3057 开头的cdn key
-            const cdn = stringToHexArray(fileCdnInfo.cdnKey);
+            const cdn = stringToHexArray(cdnKey);
 
             const aesKeyHeader = [0x8A, 0x01, 0x20]
-            const aesKeyBytes = stringToHexArray(fileCdnInfo.aesKey)
+            const aesKeyBytes = stringToHexArray(aesKey)
 
-            const randomId5 = [0x90, 0x01, 0x01, 0x9A, 0x01, 0xB2, 0x01]
+            const randomId5 = [0x90, 0x01, 0x01, 0x9A, 0x01, 0xF0, 0x01]
 
-            const cdn2 = stringToHexArray(fileCdnInfo.cdnKey)
+            const cdn2 = stringToHexArray(cdnKey)
 
             const randomId6 = [0xA0, 0x01, 0xAC, 0x73, 0xA8, 0x01, 0xE8, 0x02, 0xB0, 0x01, 0xCB, 0x01]
 
             const aesKey1Header = [0xBA, 0x01, 0x20]
-            const aesKey1 = stringToHexArray(fileCdnInfo.aesKey)
+            const aesKey1 = stringToHexArray(aesKey)
 
             const md5Header = [0xd2, 0x01, 0x20]
-            const md5KeyBytes = stringToHexArray(fileCdnInfo.md5Key)
+            const md5KeyBytes = stringToHexArray(md5Key)
 
             const md5Header1 = [0xAA, 0x02, 0x20]
             const md5Key1 = stringToHexArray(videoId)
@@ -1190,22 +1184,8 @@ function patchCdnOnComplete() {
                 const imageFileId = imageIdAddr.readUtf8String();
                 const videoFileId = videoIdAddr.readUtf8String()
                 if (currentFileId !== imageFileId && currentFileId !== videoFileId) {
-					const cdnKey = x2.add(0x60).readPointer().readUtf8String();
-					const aesKey = x2.add(0x78).readPointer().readUtf8String();
-					const md5Key = x2.add(0x90).readPointer().readUtf8String();
-
-					// 存储到全局变量
-					if (fileCdnInfo.cdnKey === "") {
-						fileCdnInfo.cdnKey = cdnKey;
-						fileCdnInfo.aesKey = aesKey;
-						fileCdnInfo.md5Key = md5Key;
-					}
-
-					const videoId = x2.add(0xf0).readPointer().readUtf8String();
-
                     console.log("[-] CndOnComplete x2: " + x2 + " currentFileId: " + currentFileId +
-                        " imageFileId: " + imageFileId + " videoFileId:" + videoFileId + " cdnKey:" + cdnKey + " aesKey: " + aesKey
-					    + " md5Key: " + md5Key + " videoId:" + videoId);
+                        " imageFileId: " + imageFileId + " videoFileId:" + videoFileId);
                     return
                 }
 
