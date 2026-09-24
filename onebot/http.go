@@ -22,6 +22,13 @@ func sendHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if config.OnebotToken == "" || token == "" || !hmac.Equal([]byte(token), []byte(config.OnebotToken)) {
+		http.Error(w, "未授权", http.StatusUnauthorized)
+		Error("未授权")
+		return
+	}
+
 	req := new(SendRequest)
 	if err := json.NewDecoder(r.Body).Decode(req); err != nil {
 		http.Error(w, "无效的 JSON", http.StatusBadRequest)
